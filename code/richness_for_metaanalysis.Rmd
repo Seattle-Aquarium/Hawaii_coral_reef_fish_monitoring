@@ -1,0 +1,83 @@
+---
+title: "Richness calculations for meta analysis"
+author: "Dani Escontrela"
+date: "2025-05-16"
+output: html_document
+---
+#calculating species richness across three locations
+
+```{r load libraries}
+library(here)
+library(tidyverse)
+library(stats)
+```
+
+```{r input data and clean up}
+data <- read.csv(here("./data_input/Hawaii_fish.csv"))
+cols_fac <- as.vector(colnames(data)[c(1:4)])
+data[cols_fac] <- lapply(data[cols_fac], factor)
+
+cols_num <- as.vector(colnames(data)[c(5:124)])
+data[cols_num] <- lapply(data[cols_num], as.numeric)
+
+data <- na.omit(data)
+# str(data)
+```
+
+```{r calculate richness at transect level}
+#calculate richness: sum number of species for each date/location/site/transect
+data$richness <- apply(data[,5:124]>0, 1, sum)
+richness_T <- data[c(1:4,125)]
+richness_T 
+# str(richness_T)
+```
+
+```{r average richness across transects for each site}
+#take the average of all the transects for each site across all years
+site_summary <- richness_T %>%
+  group_by(Site, Location) %>%
+  summarise(
+    n_transects = n(),
+    richness_mean = mean(richness),
+    richness_sd = sd(richness),
+    richness_se = richness_sd / sqrt(n_transects),
+    .groups = "drop"
+  )
+
+#clean up data frame
+site_summary <- as.data.frame(site_summary)
+cols_fac <- as.vector(colnames(site_summary)[c(1:2)])
+site_summary[cols_fac] <- lapply(site_summary[cols_fac], factor)
+
+cols_num <- as.vector(colnames(site_summary)[c(3:6)])
+site_summary[cols_num] <- lapply(site_summary[cols_num], as.numeric)
+
+site_summary <- na.omit(site_summary)
+site_summary
+```
+
+```{r average richness across sites for each location}
+#had to do without dplyr because sd was giving me NAs
+# Split by location
+by_location <- split(site_summary$richness_mean, site_summary$Location)
+
+# Compute summary statistics
+location_names <- names(by_location)
+n_sites <- sapply(by_location, length)
+richness_means <- sapply(by_location, mean)
+richness_sds <- sapply(by_location, function(x) if (length(x) > 1) sd(x) else NA)
+richness_ses <- richness_sds / sqrt(n_sites)
+
+# Combine into a data frame
+location_summary <- data.frame(
+  Location = location_names,
+  n_sites = n_sites,
+  richness_mean = richness_means,
+  richness_sd = richness_sds,
+  richness_se = richness_ses,
+  row.names = NULL
+)
+
+# View the result
+print(location_summary)
+```
